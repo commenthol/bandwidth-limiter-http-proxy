@@ -1,20 +1,8 @@
 # bandwidth-limiter-http-proxy
 
 Simple HTTP/HTTPS proxy to simulate slow network conditions. 
-It does nothing else than add an additional latency and delay in accordance with the set bandwidth. 
+The proxy adds an additional latency and delay in accordance with the set bandwidth. 
 No simulation of packetloss, retransmission, etc. is made.
-
-## Settings
-
-All settings are within the file itself. 
-
-```
-var 
-	port = 8080,							// port under which proxy is available
-	bandwidth_down = 256000,	// in bps
-	bandwidth_up   = 96000,		// in bps
-	latency        = 60;			// in ms
-```
 
 ## Setup
 
@@ -24,13 +12,29 @@ Start up the proxy with:
 ```
 node proxy.js
 ```
+(Node Version 0.8.14 was used).
 
-Node Version 0.8.14 was used.
+## Settings
 
+Open `localhost:8080` in your browser and change the settings.
+A list of preconfigured profiles for typical modem, mobile and fixnet networks exists.
+Changes are applied instantly to the proxy.
+
+The following profiles are available: 
+	* GPRS, EDGE, UMTS, HSDPA, LTE 4G, 
+	* V.34 33kbps modem, V.92 56kbps modem, ISDN, ISDN (2 channels)
+	* DSL light, ADSL
 
 ## Browser confguration
 
 In your favourite browser set up a proxy connection to `localhost:8080`. 
+
+Firefox: (Menu)Edit >Preferences >(Tab)Advanced >(Tab)Network >(Section)Connection >(Button)Settings...
+	(Radio)Manual Proxy Configuration 
+	HTTP-Proxy: localhost:8080
+	SSL-Proxy: localhost:8080 
+Chrome: 
+	Download and install extension (e.g. Proxxy)
 
 
 <br/>

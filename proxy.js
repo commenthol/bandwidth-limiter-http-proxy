@@ -6,7 +6,6 @@
  * MIT Licensed
  */
 var 
-	https = require('https'),
 	http = require('http'),
 	net = require('net'),
 	url = require('url');
@@ -28,19 +27,6 @@ This proxy does *not* consider any packet-loss, retransmission, etc.
 On the other hand a propagation model with one user in a cell, right 
 next to the antenna, things should be far better.
 
-GPRS
-	bandwidth_down = 64000,	// in bps
-	bandwidth_up   = 32000,	// in bps
-	latency        = 150;		// in ms
-EDGE
-	bandwidth_down = 128000,	// in bps
-	bandwidth_up   = 64000,		// in bps
-	latency        = 90;			// in ms
-UMTS
-	bandwidth_down = 256000,	// in bps
-	bandwidth_up   = 96000,		// in bps
-	latency        = 60;			// in ms
-
 Never use raw bandwidths as given below as packet overhead on radio-link, 
 mac-layer and tcp needs to be considered as well.  
 
@@ -54,6 +40,9 @@ mac-layer and tcp needs to be considered as well.
 	HSDPA  1800/384 kbit/s    91 ms     43 ms
 	ADSL   1000/256 kbit/s  10.9 ms    0.8 ms
 */
+
+var settingspage = '<!doctype html><html><head><meta charset="utf-8" /><title>Proxy Settings</title><style type="text/css"> *{margin:0px;padding:3px;font-family:Sans-Serif}body{margin:0px auto;max-width:320px}ul{list-style:none}li{clear:both}section{margin:7px;border:1px solid #ccc}.r{float:right}</style></head><body><h1>Proxy Settings</h1><section><h2>Current</h2><ul><li>Bandwidth Download: <span class="r">#bandwidth_down# bps</span></li><li>Bandwidth Upload: <span class="r">#bandwidth_up# bps</span></li><li>Latency: <span class="r">#latency# ms</span></li></ul></section><section><h2>Profile</h2><ul><li><a href="/?dn=64000&up=32000&la=200">GPRS</a></li><li><a href="/?dn=128000&up=64000&la=200">EDGE</a></li><li><a href="/?dn=256000&up=96000&la=90">UMTS</a></li><li><a href="/?dn=1200000&up=256000&la=60">HSDPA</a></li><li><a href="/?dn=1200000&up=1200000&la=25">LTE 4G</a></li><li><a href="/?dn=33600&up=33600&la=100">V.34 33kbps modem</a></li><li><a href="/?dn=56000&up=48000&la=100">V.92 56kbps modem</a></li><li><a href="/?dn=64000&up=64000&la=25">ISDN</a></li><li><a href="/?dn=128000&up=128000&la=25">ISDN (2 channels)</a></li><li><a href="/?dn=384000&up=64000&la=25">DSL light</a></li><li><a href="/?dn=900000&up=256000&la=25">ADSL</a></li></ul></section><section><h2>Custom</h2><form method="get" action="/"><ul><li><label for="dn">Bandwidth Download (&gt;1000 bps)</label><br/><input name="dn" value="#bandwidth_down#"/></li><li><label for="up">Bandwidth Upload (&gt;1000 bps)</label><br/><input name="up" value="#bandwidth_up#"/></li><li><label for="la">Latency (&lt;1000 ms)</label><br/><input name="la" value="#latency#"/></li><li><input type="submit"/></li></ul></form></section></body></html>';
+	//settingspage = require('fs').readFileSync(__dirname + '/p.html') + '';
 
 /**
  * simple logger 
@@ -69,11 +58,12 @@ var log = {
 			case 'string':
 				return "'" + str + "'";
 			case 'object':
-				if (depth > 2) {
+				if (depth > 3) {
 					return "'[Object]'";
 				}
 				s += "{";
 				for (var i in str) {
+					//s += "\n";
 					s += " '"+ i +"': " + this.conv(str[i], depth+1);
 					if (s[s.length-1] !== ',') {
 						s += ',';
@@ -298,53 +288,108 @@ server.on('request', function(request, response) {
 		path: _url.path || "/",
 		headers: headers
 	};
-
-	var proxyRequest = http.request(options, function(proxyResponse) {
-		var 
-			bytes,
-			delay;
+	
+	// proxy settings page
+	if (request.headers.host === ('localhost:' + port)) {
+		if ( _url.pathname === '/' ) {
+			var p, q, qq, v, i;
 			
-		// calc the http headers length as this influences throughput on low speed networks
-		// length of the response header bytes is initial delay
-		bytes = calcHeaderLength(proxyResponse.headers);
-		delay = calcDelay(bytes, bandwidth_down) + latency;
+			// change settings
+			if (_url.query) {
+				q = _url.query.split('&');
+				for (i in q) {
+					qq = q[i].split('=');
+					if (qq[1]) {
+						v = parseInt(qq[1], 10);
+						if (typeof(v) === 'number') {
+							switch (qq[0]) {
+							case 'dn':
+								if (v > 1000) {
+									bandwidth_down = v;
+								}
+								break;
+							case 'up':
+								if (v > 1000) {
+									bandwidth_up = v;
+								}
+								break;
+							case 'la':
+								if (qq[1] < 1000) {
+									latency = v;
+								}
+								break;
+							}
+						}
+					}
+				}
+				log.info({'new settings' : { bandwidth_down: bandwidth_down, 
+					bandwidth_up: bandwidth_up, latency: latency } });
+				response.writeHead('302', {'Location': '/'});
+				response.end();
+				return;
+			}
+			
+			p = settingspage;
+			p = p.replace(/#bandwidth_down#/g, bandwidth_down);
+			p = p.replace(/#bandwidth_up#/g, bandwidth_up);
+			p = p.replace(/#latency#/g, latency);
+			response.writeHead('200', {'Content-Type': 'text/html', 'Content-Length' : p.length });
+			response.end(p);
+		} 
+		else {
+			response.end('404');
+		}
+	} 
+	else { 
+		// handle proxy requests
+		
+		var proxyRequest = http.request(options, function(proxyResponse) {
+			var 
+				bytes,
+				delay;
+				
+			// calc the http headers length as this influences throughput on low speed networks
+			// length of the response header bytes is initial delay
+			bytes = calcHeaderLength(proxyResponse.headers);
+			delay = calcDelay(bytes, bandwidth_down) + latency;
 
-		response.writeHead(proxyResponse.statusCode, proxyResponse.headers);
+			response.writeHead(proxyResponse.statusCode, proxyResponse.headers);
+			proxy({
+					url: request.url, 
+					type: 'http-res', 
+					delay: delay, 
+					bytes: bytes,
+					bandwidth: bandwidth_down }, 
+				proxyResponse, response);
+		});
+
+		proxyRequest.on('error', function(e) {
+			log.error('problem with request: ' + e.message);
+			response.writeHead(500, { 'content-type': 'text/html' });
+			response.write(e.message, 'utf-8');
+			response.end();
+		});
+		proxyRequest.on('timeout', function(e) {
+			log.error('problem with request: ' + e.message);
+			response.writeHead(408, { 'content-type': 'text/html' });
+			response.write(e.message, 'utf-8');
+			response.end();
+		});
+
+		// calc the http headers length as this influences throughput on low speed networks
+		bytes = calcHeaderLength(request.headers);
+		delay = calcDelay(bytes, bandwidth_up) + latency;
 		proxy({
 				url: request.url, 
-				type: 'http-res', 
+				type: 'http-req', 
 				delay: delay, 
 				bytes: bytes,
-				bandwidth: bandwidth_down }, 
-			proxyResponse, response);
-	});
+				bandwidth: bandwidth_up }, 
+			request, proxyRequest);
+		
+		log.debug('-------');
 
-	proxyRequest.on('error', function(e) {
-		log.error('problem with request: ' + e.message);
-		response.writeHead(500, { 'content-type': 'text/html' });
-		response.write(e.message, 'utf-8');
-		response.end();
-  });
-	proxyRequest.on('timeout', function(e) {
-		log.error('problem with request: ' + e.message);
-		response.writeHead(408, { 'content-type': 'text/html' });
-		response.write(e.message, 'utf-8');
-		response.end();
-  });
-
-	// calc the http headers length as this influences throughput on low speed networks
-	bytes = calcHeaderLength(request.headers);
-	delay = calcDelay(bytes, bandwidth_up) + latency;
-	proxy({
-			url: request.url, 
-			type: 'http-req', 
-			delay: delay, 
-			bytes: bytes,
-			bandwidth: bandwidth_up }, 
-		request, proxyRequest);
-	
-	log.debug('-------');
-
+	}
 });
 
 // ssl tunneling http proxy
