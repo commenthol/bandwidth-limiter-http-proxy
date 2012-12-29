@@ -93,24 +93,24 @@ var log = {
 	},
 	debug: function(str) {
 		if (this.level === 'debug') {
-			this.log({debug: str});
+			this.log({time: Date.now(), debug: str});
 		}
 	},
 	info: function(str) {
 		if (this.level === 'debug' || 
 				this.level === 'info') {
-			this.log({info: str});
+			this.log({time: Date.now(), info: str});
 		}
 	}, 
 	warn: function(str) {
 		if (this.level === 'debug' || 
 				this.level === 'info' ||
 				this.level === 'warn') {
-			this.log({warn: str});
+			this.log({time: Date.now(), warn: str});
 		}
 	}, 
 	error: function(str) {
-		this.log({error: str});
+		this.log({time: Date.now(), error: str});
 	} 
 };
 
@@ -163,7 +163,7 @@ function proxy(options, connection, connection2) {
 		quene = [],								// array to store timestamps to measure the jitter
 		timeref = 0,							// correct the time jitter between packets
 		type = options.type || '',
-		bytes = 0,
+		bytes = options.bytes || 0,
 		next;
 
 	// print out some info on throughput
@@ -174,7 +174,8 @@ function proxy(options, connection, connection2) {
 		d = Date.now() - timeref;
 		if (d !== 0 && bytes > 0) { 
 			bw = parseInt(bytes * 8 * 1000 / d, 10);
-			log.info({type: type, duration: d, bytes: bytes, bandwidth: bw});
+			log.info({type: type, duration: d, bytes: bytes, bandwidth: bw, 
+				url: options.url});
 		}
 	}
 	
@@ -189,13 +190,16 @@ function proxy(options, connection, connection2) {
 				
 		if (qo.chunk !== undefined) {
 			jitter = parseInt(qo.time - now, 10);
-			log.debug({type: type, jitter: jitter, now: now, packetlength: qo.chunk.length});
+			log.debug({type: type, jitter: jitter, now: now, 
+				packetlength: qo.chunk.length});
 			connection2.write(qo.chunk, 'binary');
 		}
 		else {
 			log.debug({type: type, msg: 'event end - connection.end'});
-			transfer(bytes, timeref);
 			connection2.end();
+		}
+		if (quene.length === 0) {
+			transfer(bytes, timeref);
 		}
 	}
 
@@ -234,7 +238,8 @@ function proxy(options, connection, connection2) {
 		next = timestamp(quene, delay);
 		quene.push({time: next.time, chunk: chunk});
 		
-		log.debug({type: type, data: chunk.length, next: next, delay: delay});
+		log.debug({type: type, data: chunk.length, next: next.time, 
+			delay: delay});
 
 		setTimeout(function() { 
 			procQuene(quene); 
@@ -268,10 +273,8 @@ server.on('request', function(request, response) {
 	var
 		options = {},			// options object for the http proxy request
 		headers = {},			// headers object for the http proxy request
-		i, o,							// some helpers
-		cookies,					// cookies object
-		cookies_new = [],	// new cookies array 
 		_url,							// url parsing
+		bytes,
 		delay;
 
 	/*
@@ -283,7 +286,7 @@ server.on('request', function(request, response) {
 	*/
 	_url = url.parse(request.url);
 	
-	log.info({url: request.url});
+	//log.info({url: request.url});
 
 	headers = request.headers;
 	headers && log.debug(headers);
@@ -298,14 +301,22 @@ server.on('request', function(request, response) {
 
 	var proxyRequest = http.request(options, function(proxyResponse) {
 		var 
+			bytes,
 			delay;
 			
 		// calc the http headers length as this influences throughput on low speed networks
 		// length of the response header bytes is initial delay
-		delay = calcDelay(calcHeaderLength(proxyResponse.headers), bandwidth_down) + latency;
+		bytes = calcHeaderLength(proxyResponse.headers);
+		delay = calcDelay(bytes, bandwidth_down) + latency;
 
 		response.writeHead(proxyResponse.statusCode, proxyResponse.headers);
-		proxy({type: 'http-res', delay: delay, bandwidth: bandwidth_down }, proxyResponse, response);
+		proxy({
+				url: request.url, 
+				type: 'http-res', 
+				delay: delay, 
+				bytes: bytes,
+				bandwidth: bandwidth_down }, 
+			proxyResponse, response);
 	});
 
 	proxyRequest.on('error', function(e) {
@@ -322,8 +333,15 @@ server.on('request', function(request, response) {
   });
 
 	// calc the http headers length as this influences throughput on low speed networks
-	delay = calcDelay(calcHeaderLength(request.headers), bandwidth_up) + latency;
-	proxy({type: 'http-req', delay: delay, bandwidth: bandwidth_up }, request, proxyRequest);
+	bytes = calcHeaderLength(request.headers);
+	delay = calcDelay(bytes, bandwidth_up) + latency;
+	proxy({
+			url: request.url, 
+			type: 'http-req', 
+			delay: delay, 
+			bytes: bytes,
+			bandwidth: bandwidth_up }, 
+		request, proxyRequest);
 	
 	log.debug('-------');
 
@@ -350,7 +368,7 @@ server.on('connect', function(request, socket, head){
 			socket.destroy();
 			return; 
 		}
-		log.info({url: request.url, protocol: 'https'});
+		//log.info({url: request.url, protocol: 'https'});
 	}
 	
 	// Return SSL-proxy greeting header.
@@ -363,7 +381,12 @@ server.on('connect', function(request, socket, head){
 	});
 
 	// handle stream from origin
-	proxy({type: 'https-req', delay: latency, bandwidth: bandwidth_up }, socket, client);
+	proxy({
+			url: request.url,
+			type: 'https-req', 
+			delay: latency, 
+			bandwidth: bandwidth_up }, 
+		socket, client);
 	socket.on('error', function() {
 		log.debug('socket error');
 		client.end();
@@ -378,7 +401,12 @@ server.on('connect', function(request, socket, head){
 	});
 
 	// handle stream to target
-	proxy({type: 'https-res', delay: latency, bandwidth: bandwidth_down }, client, socket);
+	proxy({
+			url: request.url,
+			type: 'https-res', 
+			delay: latency, 
+			bandwidth: bandwidth_down }, 
+		client, socket);
 	client.on('error', function() {
 		log.debug('client error');
 		socket.end();
