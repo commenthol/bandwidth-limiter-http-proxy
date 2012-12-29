@@ -1,3 +1,4 @@
+
 # bandwidth-limiter-http-proxy
 
 Simple HTTP/HTTPS proxy to simulate slow network conditions. 
@@ -21,23 +22,26 @@ A list of preconfigured profiles for typical modem, mobile and fixnet networks e
 Changes are applied instantly to the proxy.
 
 The following profiles are available: 
-	* GPRS, EDGE, UMTS, HSDPA, LTE 4G, 
-	* V.34 33kbps modem, V.92 56kbps modem, ISDN, ISDN (2 channels)
-	* DSL light, ADSL
+  * GPRS, EDGE, UMTS, HSDPA, LTE 4G, 
+  * V.34 33kbps modem, V.92 56kbps modem, ISDN, ISDN (2 channels)
+  * DSL light, ADSL
+
+![Proxy Settings Image](./docs/proxy-settings.png)
 
 ## Browser confguration
 
 In your favourite browser set up a proxy connection to `localhost:8080`. 
 
-Firefox: (Menu)Edit >Preferences >(Tab)Advanced >(Tab)Network >(Section)Connection >(Button)Settings...
-	(Radio)Manual Proxy Configuration 
-	HTTP-Proxy: localhost:8080
-	SSL-Proxy: localhost:8080 
+Firefox: 
+  1. (Menu)Edit >Preferences >(Tab)Advanced >(Tab)Network >(Section)Connection >(Button)Settings...
+  2. (Radio)Manual Proxy Configuration 
+    * HTTP-Proxy: localhost:8080
+    * SSL-Proxy: localhost:8080 
+	
 Chrome: 
-	Download and install extension (e.g. Proxxy)
+  1. Download and install extension (e.g. Proxxy)
 
 
-<br/>
 ### License
 
 (The MIT License)
