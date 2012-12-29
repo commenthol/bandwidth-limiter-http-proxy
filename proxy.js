@@ -16,9 +16,9 @@ var
  */
 var
 	port = 8080,				// port under which proxy is available
-	bandwidth_down = 256000,	// in bps
-	bandwidth_up   = 96000,	// in bps
-	latency        = 60;		// in ms
+	bandwidth_down = 64000,	// in bps
+	bandwidth_up   = 32000,	// in bps
+	latency        = 150;		// in ms
 
 /*
 The below stated values are an approximation of what we like to test.
@@ -60,48 +60,57 @@ mac-layer and tcp needs to be considered as well.
  */
 var log = {
 	level: 'info',
-	log: function (str) {
-		console.log(str);
+	conv: function(str, depth) {
+		var s = '';
+		depth = depth || 0;
+		switch (typeof(str)) {
+			case 'number':
+				return str;
+			case 'string':
+				return "'" + str + "'";
+			case 'object':
+				if (depth > 2) {
+					return "'[Object]'";
+				}
+				s += "{";
+				for (var i in str) {
+					s += " '"+ i +"': " + this.conv(str[i], depth+1);
+					if (s[s.length-1] !== ',') {
+						s += ',';
+					}
+				}
+				if (s[s.length-1] === ',') {
+					s = s.substring (0, s.length-1);
+				}
+				s += " },";
+				return s;
+			default:
+				return;
+		}
 	},
-	conv: function (o) {
-		var 
-			i,
-			r = '';
-		switch (typeof(o)) {
-		case 'object': 
-			r += '{ ';
-			for (i in o) {
-				r += "'"+ i + "': '" + o[i] + "', ";
-			} 
-			r += ' }';
-			break;
-		case 'function':
-			break;
-		default: 
-			r = o;
-		} 
-		return r;
+	log: function (str) {
+		console.log(this.conv(str));
 	},
 	debug: function(str) {
 		if (this.level === 'debug') {
-			this.log('debug:\t' + this.conv(str));
+			this.log({debug: str});
 		}
 	},
 	info: function(str) {
 		if (this.level === 'debug' || 
 				this.level === 'info') {
-			this.log('info:\t' + this.conv(str));
+			this.log({info: str});
 		}
 	}, 
 	warn: function(str) {
 		if (this.level === 'debug' || 
 				this.level === 'info' ||
 				this.level === 'warn') {
-			this.log('warn:\t' + this.conv(str));
+			this.log({warn: str});
 		}
 	}, 
 	error: function(str) {
-		this.log('error:\t' + this.conv(str));
+		this.log({error: str});
 	} 
 };
 
@@ -150,7 +159,6 @@ function calcHeaderLength(headers) {
  */
 function proxy(options, connection, connection2) {
 	var 
-		timeout = 0,							// the real timer setting
 		delay = 0,								// single delay of one packet
 		quene = [],								// array to store timestamps to measure the jitter
 		timeref = 0,							// correct the time jitter between packets
@@ -158,6 +166,7 @@ function proxy(options, connection, connection2) {
 		bytes = 0,
 		next;
 
+	// print out some info on throughput
 	function transfer(bytes, timeref) {
 		var 
 			d = 0, 
@@ -165,15 +174,55 @@ function proxy(options, connection, connection2) {
 		d = Date.now() - timeref;
 		if (d !== 0 && bytes > 0) { 
 			bw = parseInt(bytes * 8 * 1000 / d, 10);
-			log.info(type + 'duration:\t' + d + '\tbytes:\t' + bytes + '\tbandwidth:\t' + bw);
+			log.info({type: type, duration: d, bytes: bytes, bandwidth: bw});
+		}
+	}
+	
+	// process quene
+	function procQuene(quene) {
+		var 
+			now = Date.now(),
+			jitter, 
+			qo;
+		
+		qo = quene.shift(1) || {};
+				
+		if (qo.chunk !== undefined) {
+			jitter = parseInt(qo.time - now, 10);
+			log.debug({type: type, jitter: jitter, now: now, packetlength: qo.chunk.length});
+			connection2.write(qo.chunk, 'binary');
+		}
+		else {
+			log.debug({type: type, msg: 'event end - connection.end'});
+			transfer(bytes, timeref);
+			connection2.end();
 		}
 	}
 
+	// get next timestamp
+	function timestamp(quene, delay) {
+		var
+			timeout,
+			next = 0;
+			
+		if (quene[quene.length-1] && quene[quene.length-1].time) {
+			next = quene[quene.length-1].time;
+		}
+		next += delay;
+		timeout = next - Date.now();
+		if (timeout < 0) {
+			timeout = delay;
+			next = Date.now() + delay;
+		}
+		return { time: next, timeout: timeout };
+	}
+
+	// data received
 	connection.on('data', function (chunk) {
 		if (timeref === 0) {
 			timeref = Date.now();
 			delay = options.delay || 0; // consider initial delay
-			log.debug(type + 'timeref: ' + timeref);
+			log.debug({type: type, timeref: timeref});
 		} else {
 			delay = 0;
 		}
@@ -182,51 +231,28 @@ function proxy(options, connection, connection2) {
 		bytes += chunk.length;
 		
 		// add timestamp to quene
-		next = quene[quene.length-1] || 0;
-		next += delay;
-		timeout = next - Date.now();
-		if (timeout < 0) {
-			quene.push(Date.now() + delay);
-			timeout = delay;
-		} else {
-			quene.push(next);
-		}
+		next = timestamp(quene, delay);
+		quene.push({time: next.time, chunk: chunk});
 		
-		log.debug(type + 'data:\t' + chunk.length + '\t' + quene[quene.length-1] + '\t' + delay);
+		log.debug({type: type, data: chunk.length, next: next, delay: delay});
 
-		setTimeout(function() {
-			var 
-				d = 0, bw = 0,
-				now = Date.now(),
-				jitter;
-				
-			jitter = quene.shift(1) || 0;
-			jitter = parseInt(jitter - now, 10);
-			log.debug(type + 'jitter:\t' + chunk.length + '\t' + now + '\t' +  jitter);
-			
-			connection2.write(chunk, 'binary');
-		}, timeout);
+		setTimeout(function() { 
+			procQuene(quene); 
+		}, next.timeout);
 	});
 	
+	// connection ends
 	connection.on('end',	function() {
 		delay = options.delay || 0;
-		next = quene[quene.length-1] || 0;
-		next += delay;
-		timeout = next - Date.now();
-		if (timeout < 0) {
-			timeout = delay;
-		} else {
-			quene.push(next);
-		}
 		if (timeref === 0) {
 			timeref = Date.now();
 		}
+		next = timestamp(quene, delay);
+		quene.push({time: next.time});
 		
-		setTimeout(function(){
-			transfer(bytes, timeref);
-			log.debug(type + 'event end - connection.end');
-			connection2.end();
-		}, timeout);
+		setTimeout(function() { 
+			procQuene(quene); 
+		}, next.timeout);
 	});
 }
 
@@ -257,7 +283,7 @@ server.on('request', function(request, response) {
 	*/
 	_url = url.parse(request.url);
 	
-	log.info(request.url);
+	log.info({url: request.url});
 
 	headers = request.headers;
 	headers && log.debug(headers);
@@ -279,7 +305,7 @@ server.on('request', function(request, response) {
 		delay = calcDelay(calcHeaderLength(proxyResponse.headers), bandwidth_down) + latency;
 
 		response.writeHead(proxyResponse.statusCode, proxyResponse.headers);
-		proxy({type: 'httpres:\t', delay: delay, bandwidth: bandwidth_down }, proxyResponse, response);
+		proxy({type: 'http-res', delay: delay, bandwidth: bandwidth_down }, proxyResponse, response);
 	});
 
 	proxyRequest.on('error', function(e) {
@@ -297,7 +323,7 @@ server.on('request', function(request, response) {
 
 	// calc the http headers length as this influences throughput on low speed networks
 	delay = calcDelay(calcHeaderLength(request.headers), bandwidth_up) + latency;
-	proxy({type: 'httpreq:\t', delay: delay, bandwidth: bandwidth_up }, request, proxyRequest);
+	proxy({type: 'http-req', delay: delay, bandwidth: bandwidth_up }, request, proxyRequest);
 	
 	log.debug('-------');
 
@@ -324,7 +350,7 @@ server.on('connect', function(request, socket, head){
 			socket.destroy();
 			return; 
 		}
-		log.info(request.url);
+		log.info({url: request.url, protocol: 'https'});
 	}
 	
 	// Return SSL-proxy greeting header.
@@ -337,7 +363,7 @@ server.on('connect', function(request, socket, head){
 	});
 
 	// handle stream from origin
-	proxy({type: 'httpsreq:\t', delay: latency, bandwidth: bandwidth_up }, socket, client);
+	proxy({type: 'https-req', delay: latency, bandwidth: bandwidth_up }, socket, client);
 	socket.on('error', function() {
 		log.debug('socket error');
 		client.end();
@@ -352,7 +378,7 @@ server.on('connect', function(request, socket, head){
 	});
 
 	// handle stream to target
-	proxy({type: 'httpsres:\t', delay: latency, bandwidth: bandwidth_down }, client, socket);
+	proxy({type: 'https-res', delay: latency, bandwidth: bandwidth_down }, client, socket);
 	client.on('error', function() {
 		log.debug('client error');
 		socket.end();
@@ -372,5 +398,5 @@ server.on('connect', function(request, socket, head){
 
 log.info("Proxy runs on port "+ port);
 log.info("Download bandwidth is " + bandwidth_down + ' bps');
-log.info("Upload bandwidth is   " + bandwidth_up + ' bps');
-log.info("Latency is            " + latency + ' ms');
+log.info("Upload bandwidth is " + bandwidth_up + ' bps');
+log.info("Latency is " + latency + ' ms');
