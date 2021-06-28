@@ -1,0 +1,36 @@
+{
+  "name": "bandwidth-limiter-http-proxy",
+  "version": "1.0.0",
+  "description": "Simple HTTP/HTTPS proxy to simulate slow network conditions.",
+  "keywords": [],
+  "homepage": "https://github.com/commenthol/bandwidth-limiter-http-proxy#readme",
+  "bugs": {
+    "url": "https://github.com/commenthol/bandwidth-limiter-http-proxy/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/commenthol/bandwidth-limiter-http-proxy.git"
+  },
+  "license": "MIT",
+  "author": "commenthol@gmail.com",
+  "main": "proxy.js",
+  "bin": {
+    "bandwidth-limiter-http-proxy": "./proxy.js"
+  },
+  "directories": {
+    "doc": "docs",
+    "test": "test"
+  },
+  "scripts": {
+    "start": "node proxy.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint --fix \"**/*.js\""
+  },
+  "devDependencies": {
+    "eslint": "^7.29.0",
+    "eslint-config-standard": "^16.0.3",
+    "eslint-plugin-import": "^2.23.4",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-promise": "^5.1.0"
+  }
+}

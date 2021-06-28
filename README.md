@@ -1,44 +1,41 @@
-
 # bandwidth-limiter-http-proxy
 
-Simple HTTP/HTTPS proxy to simulate slow network conditions. 
-The proxy adds an additional latency and delay in accordance with the set bandwidth. 
+Simple HTTP/HTTPS proxy to simulate slow network conditions.
+The proxy adds an additional latency and delay in accordance with the set bandwidth.
 No simulation of packetloss, retransmission, etc. is made.
 
-## Setup
-
-There is no external dependency to any other node-module. 
-Start up the proxy with:
+## Usage
 
 ```
-node proxy.js
+npm i -g bandwidth-limiter-http-proxy
+
+bandwidth-limiter-http-proxy
 ```
-(Node Version 0.8.14 was used).
 
 ## Settings
 
-Open `localhost:8080` in your browser and change the settings.
+Open http://localhost:8080 in your browser and change the settings.
 A list of preconfigured profiles for typical modem, mobile and fixnet networks exists.
 Changes are applied instantly to the proxy.
 
-The following profiles are available: 
-  * GPRS, EDGE, UMTS, HSDPA, LTE 4G, 
-  * V.34 33kbps modem, V.92 56kbps modem, ISDN, ISDN (2 channels)
-  * DSL light, ADSL
+The following profiles are available:
+* GPRS, EDGE, UMTS, HSDPA, LTE 4G,
+* V.34 33kbps modem, V.92 56kbps modem, ISDN, ISDN (2 channels)
+* DSL light, ADSL
 
-![Proxy Settings Image](./docs/proxy-settings.png)
+![Proxy Settings Image](https://raw.githubusercontent.com/commenthol/bandwidth-limiter-http-proxy/master/docs/proxy-settings.png)
 
 ## Browser confguration
 
-In your favourite browser set up a proxy connection to `localhost:8080`. 
+In your favourite browser set up a proxy connection to `localhost:8080`.
 
-Firefox: 
+Firefox:
   1. (Menu)Edit >Preferences >(Tab)Advanced >(Tab)Network >(Section)Connection >(Button)Settings...
-  2. (Radio)Manual Proxy Configuration 
+  2. (Radio)Manual Proxy Configuration
     * HTTP-Proxy: localhost:8080
-    * SSL-Proxy: localhost:8080 
-	
-Chrome: 
+    * SSL-Proxy: localhost:8080
+
+Chrome:
   1. Download and install extension (e.g. Proxxy)
 
 

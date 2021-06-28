@@ -1,12 +1,12 @@
 #!/bin/bash
 
 _measure() {
-start=`date +%s%N`
-$1 >> o
-end=`date +%s%N`
-# calc time in ms
-echo "( $end - $start ) / 1000000" | bc 
-echo -e "\n\n" >> o
+  start=`date +%s%N`
+  $1 >> o
+  end=`date +%s%N`
+  # calc time in ms
+  echo "( $end - $start ) / 1000000" | bc
+  echo -e "\n\n" >> o
 }
 
 echo > o
